@@ -48,10 +48,12 @@ int main(int argc, char **argv) {
     // Black background
     GRRLIB_SetBackgroundColour(0x00, 0x00, 0x00, 0xFF);
 
+	int tick=0;
+
 	while(1) {
 	
 		GRRLIB_DrawImg(0, 0, CopiedImg, 0, 1, 1, 0xFFFFFFFF);
-		sprintf(FPS, "Current FPS: %d", CalculateFrameRate());
+		sprintf(FPS, "Current tick: %d", tick);
             GRRLIB_PrintfTTF(500+1, 25+1, myFont, FPS, 12, 0x000000FF);
             GRRLIB_PrintfTTF(500, 25, myFont, FPS, 12, 0xFFFFFFFF);
 		
@@ -68,7 +70,7 @@ int main(int argc, char **argv) {
 		if (buttonsDown & PAD_BUTTON_START) {
 			exit(0);
 		}
-
+		tick++;
 		GRRLIB_Render();
 	}
 
