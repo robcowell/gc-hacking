@@ -1,0 +1,9 @@
+build/BossGame.d
+build/BossGame.o
+build/font1_png.h
+build/font1.png.o
+build/FreeMonoBold_ttf.h
+build/FreeMonoBold.ttf.o
+build/gcdev.elf.map
+build/technique_mod.h
+build/technique.mod.o
