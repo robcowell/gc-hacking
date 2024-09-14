@@ -1,100 +1,109 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <gccore.h>
-#include <aesndlib.h>
-#include <gcmodplay.h>
+#include <asndlib.h>
+#include <mp3player.h>
 #include <grrlib.h>
-#include <ogc/lwp_watchdog.h>
+#include <time.h>
 
-// include generated headers
-#include "technique_mod.h"
-#include "FreeMonoBold_ttf.h"
+// Include generated headers
+#include "Jazz_mp3.h"
+#include "title_png.h"
 
-static MODPlay play;
-static u8 CalculateFrameRate();
+#define SCREEN_WIDTH 640
+#define SCREEN_HEIGHT 480
 
+// Function to generate a random noise texture for film grain
+GRRLIB_texImg* GenerateGrainTexture(int width, int height) {
+    // Allocate memory for the grain texture
+    GRRLIB_texImg* grainTex = GRRLIB_CreateEmptyTexture(width, height);
+
+    // Seed the random number generator
+    srand(time(NULL));
+
+    // Fill the texture with random noise
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            // Generate random noise (grayscale, same value for R, G, B)
+            u8 noise = rand() % 256;
+
+            // Set the pixel in the texture (RGBA format)
+            ((u32*)grainTex->data)[y * width + x] = (noise << 24) | (noise << 16) | (noise << 8) | 0x80;  // Alpha set to 50% (0x80)
+        }
+    }
+
+    return grainTex;
+}
+
+
+void SetupTEVForFilmGrain() {
+    // Set up the first TEV stage for the scene texture (base texture)
+    GX_SetTevOp(GX_TEVSTAGE0, GX_MODULATE);
+    GX_SetTevOrder(GX_TEVSTAGE0, GX_TEXCOORD0, GX_TEXMAP0, GX_COLOR0A0);
+
+    // Set up the second TEV stage for the grain texture
+    GX_SetTevOp(GX_TEVSTAGE1, GX_TEV_ADD);  // Add the grain texture to the base texture
+    GX_SetTevOrder(GX_TEVSTAGE1, GX_TEXCOORD1, GX_TEXMAP1, GX_COLOR0A0);
+
+    // Blend control for the grain texture (subtle blending)
+    GX_SetTevKColor(GX_KCOLOR0, (GXColor){128, 128, 128, 255});  // Blending constant
+    GX_SetTevKColorSel(GX_TEVSTAGE1, GX_TEV_KCSEL_K0_R);  // Select the red channel for blending
+    GX_SetTevKAlphaSel(GX_TEVSTAGE1, GX_TEV_KASEL_K0_A);  // Select the alpha channel for blending control
+}
 
 //---------------------------------------------------------------------------------
 int main(int argc, char **argv) {
 //---------------------------------------------------------------------------------
 
-	char FPS[255] = "";
-	// Initialise GRRLib
-	GRRLIB_Init();
+    // Initialise GRRLib
+    GRRLIB_Init();
 
-	// Load the font from memory
-    GRRLIB_ttfFont *myFont = GRRLIB_LoadTTF(FreeMonoBold_ttf, FreeMonoBold_ttf_size);
+    // Load the title screen texture
+    GRRLIB_texImg *title = GRRLIB_LoadTexture(title_png);
 
-	 // Create an empty texture to store a copy of the screen
-    GRRLIB_texImg *CopiedImg = GRRLIB_CreateEmptyTexture(rmode->fbWidth, rmode->efbHeight);
+    // Generate the grain texture procedurally
+    GRRLIB_texImg* grainTex = GenerateGrainTexture(SCREEN_WIDTH, SCREEN_HEIGHT);
 
-	
+    // Initialise the attached controllers
+    PAD_Init();
 
-	// Initialise the attached controllers
-	PAD_Init();
+    // Initialise the audio subsystem
+    ASND_Init();
 
-	// Initialise the audio subsystem
-	AESND_Init();
+    MP3Player_Init();
+    MP3Player_PlayBuffer(Jazz_mp3, Jazz_mp3_size, NULL);
 
-	
-
-	MODPlay_Init(&play);
-	MODPlay_SetMOD(&play,technique_mod);
-	MODPlay_Start(&play);
-
-	// To have a cool effect anti-aliasing is turned on
+    // To have a cool effect anti-aliasing is turned on
     GRRLIB_Settings.antialias = true;
 
     // Black background
     GRRLIB_SetBackgroundColour(0x00, 0x00, 0x00, 0xFF);
 
-	int tick=0;
+    // Set up TEV for film grain blending
+    SetupTEVForFilmGrain();
 
-	while(1) {
-	
-		GRRLIB_DrawImg(0, 0, CopiedImg, 0, 1, 1, 0xFFFFFFFF);
-		sprintf(FPS, "Current tick: %d", tick);
-            GRRLIB_PrintfTTF(500+1, 25+1, myFont, FPS, 12, 0x000000FF);
-            GRRLIB_PrintfTTF(500, 25, myFont, FPS, 12, 0xFFFFFFFF);
-		
-		
+    while (1) {
+        PAD_ScanPads();
 
-		PAD_ScanPads();
+        int buttonsDown = PAD_ButtonsDown(0);
 
-		int buttonsDown = PAD_ButtonsDown(0);
+        if (buttonsDown & PAD_BUTTON_START) {
+            break; // Exit the loop and clean up
+        }
 
-		if( buttonsDown & PAD_BUTTON_A ) {
-			printf("Button A pressed.\n");
-		}
+        // Draw the title screen
+        GRRLIB_DrawImg(0, 0, title, 0, 1, 1, 0xFFFFFFFF);
 
-		if (buttonsDown & PAD_BUTTON_START) {
-			exit(0);
-		}
-		tick++;
-		GRRLIB_Render();
-	}
+        // Draw the grain texture with subtle blending
+        GRRLIB_DrawImg(0, 0, grainTex, 0, 1, 1, 0x80FFFFFF);  // Render with 50% opacity for subtle grain
 
-	GRRLIB_FreeTTF(myFont);
-	GRRLIB_Exit();
-	exit(0);
-}
-
-/**
- * This function calculates the number of frames we render each second.
- * @return The number of frames per second.
- */
-static u8 CalculateFrameRate()
-{
-    static u8 frameCount = 0;
-    static u32 lastTime;
-    static u8 FPS = 0;
-    u32 currentTime = ticks_to_millisecs(gettime());
-
-    frameCount++;
-    if(currentTime - lastTime > 1000) {
-        lastTime = currentTime;
-        FPS = frameCount;
-        frameCount = 0;
+        // Render the final scene
+        GRRLIB_Render();
     }
-    return FPS;
+
+    // Clean up
+    GRRLIB_FreeTexture(title);
+    GRRLIB_FreeTexture(grainTex);
+    GRRLIB_Exit();
+    exit(0);
 }
